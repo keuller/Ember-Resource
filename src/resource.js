@@ -3,7 +3,8 @@
 (function(Ember) {
 	
 Ember.Resource = Ember.Object.extend({ 
-	url: "", 
+	url: "",
+	token: "",
 
 	__parseArgs: function() {
 	    var settings = {};
@@ -20,43 +21,66 @@ Ember.Resource = Ember.Object.extend({
 	    if (settings.success || settings.error) {
 	    	throw new Ember.Error("ajax should use promises, received 'success' or 'error' callback");
 	    }
+	    var _token = this.token;
+	    if (_token !== '') {
+	    	settings.beforeSend = function (request) {
+				request.setRequestHeader("Authorization", _token);
+            };
+	    }
 	    return settings;
 	},
 	
 	request: function(options) {
 		options = options || {};
-		return this.raw.apply(this, [options.url, { type: options.type, data: options.data }]).then(function(result) {
+		var _token = this.token;
+		var _contentType = options.contentType || 'application/x-www-form-urlencoded';
+		return this.raw.apply(this, [options.url, { 
+				type: options.type,
+				data: options.data,
+				contentType: _contentType
+			}]).then(function(result) {
 			return result.response;
 		}, null, 'resource: dynamic ajax response');
 	},
 
-	fetch: function() {
+	fetch: function(type) {
 	    return this.raw.apply(this, [this.url]).then(function(result) {
-	    	return result.response;
+	    	var list = Ember.A();
+	    	result.response.forEach(function(item) {
+	    		if (type) {
+	    			list.pushObject(type.create(item));
+	    		} else {
+	    			list.pushObject(Em.Object.create(item));
+	    		}
+	    	});
+	    	return list;
 	    }, null, 'resource: unwrap raw ajax response');
 	},
 	
 	get: function(code) {
 		return this.raw.apply(this, [this.url + '/' + code]).then(function(result) {
-			return result.response;
+			return Em.Object.create(result.response);
 		}, null, 'resource: raw ajax response');
 	},
 
 	save: function(obj) {
-		return this.raw.apply(this, [this.url, { type: 'POST', data: obj }]).then(function(result) {
+		var hash = JSON.stringify(obj);
+		return this.raw.apply(this, [this.url, { type: 'POST', data: hash, dataType: 'json', contentType:'application/json' }]).then(function(result) {
 			return result.response;
 		}, null, 'resource: raw ajax response');
 	},
 
 	update: function(obj) {
-		return this.raw.apply(this, [this.url + '/' + obj.id, { type: 'PUT', data: obj }]).then(function(result) {
+		var hash = JSON.stringify(obj);
+		var _data = JSON.parse(hash);
+		return this.raw.apply(this, [this.url + '/' + _data.id, { type: 'PUT', data: hash, dataType: 'json', contentType:'application/json' }]).then(function(result) {
 			return result.response;
 		}, null, 'resource: raw ajax response');
 	},
 
-	remove: function(code) {
+	remove: function(code, callback) {
 		return this.raw.apply(this, [this.url + '/' + code, { type: 'DELETE' }]).then(function(result) {
-			return result.response;
+			callback(result.response);
 		}, null, 'resource: raw ajax response');
 	},
 
